@@ -9,12 +9,14 @@
   ],
   "ignore": [
     "**/__pyrefly_virtual__/**",
+    "**/inmemory/**",
     "**/*.ipynb"
   ],
   "exclude": [
     "**/node_modules",
     "**/__pycache__",
     "**/.ipynb_checkpoints",
-    "**/__pyrefly_virtual__/**"
+    "**/__pyrefly_virtual__/**",
+    "**/inmemory/**"
   ]
 }

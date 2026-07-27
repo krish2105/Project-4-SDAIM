@@ -8,7 +8,16 @@
   ],
   "python.analysis.ignore": [
     "**/__pyrefly_virtual__/**",
+    "**/inmemory/**",
     "**/*.ipynb"
+  ],
+  "python.analysis.exclude": [
+    "**/__pyrefly_virtual__/**",
+    "**/inmemory/**"
+  ],
+  "pyrefly.ignore": [
+    "**/__pyrefly_virtual__/**",
+    "**/inmemory/**"
   ],
   "python.analysis.diagnosticMode": "openFilesOnly"
 }
