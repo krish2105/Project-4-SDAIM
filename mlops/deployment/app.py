@@ -5,6 +5,7 @@ from huggingface_hub import hf_hub_download
 import joblib
 import io
 import sys
+import os
 # Scikit-Learn 1.6+ compatibility patch for pickled XGBClassifier models
 try:
     from sklearn.base import ClassifierMixin
