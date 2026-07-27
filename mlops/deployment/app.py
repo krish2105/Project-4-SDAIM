@@ -304,11 +304,51 @@ with tab_batch:
             batch_df = pd.read_csv(uploaded_file)
             st.success(f"File **'{uploaded_file.name}'** loaded ({len(batch_df)} records).")
             
-            proc_df = batch_df[REQUIRED_COLUMNS].copy()
+            COLUMN_MAP = {
+                'creditscore': 'CreditScore', 'credit_score': 'CreditScore', 'score': 'CreditScore',
+                'geography': 'Geography', 'country': 'Geography', 'location': 'Geography',
+                'age': 'Age',
+                'tenure': 'Tenure', 'years': 'Tenure',
+                'balance': 'Balance', 'account_balance': 'Balance',
+                'numofproducts': 'NumOfProducts', 'num_of_products': 'NumOfProducts', 'products': 'NumOfProducts',
+                'hascrcard': 'HasCrCard', 'has_cr_card': 'HasCrCard', 'credit_card': 'HasCrCard',
+                'isactivemember': 'IsActiveMember', 'is_active_member': 'IsActiveMember', 'active': 'IsActiveMember',
+                'estimatedsalary': 'EstimatedSalary', 'estimated_salary': 'EstimatedSalary', 'salary': 'EstimatedSalary'
+            }
+
+            DEFAULT_VALUES = {
+                'CreditScore': 650, 'Geography': 'France', 'Age': 38, 'Tenure': 5,
+                'Balance': 50000.0, 'NumOfProducts': 1, 'HasCrCard': 1, 'IsActiveMember': 1,
+                'EstimatedSalary': 75000.0
+            }
+
+            # Map column names
+            renamed_cols = {}
+            for col in batch_df.columns:
+                clean_col = str(col).strip().lower().replace(" ", "_")
+                if clean_col in COLUMN_MAP:
+                    renamed_cols[col] = COLUMN_MAP[clean_col]
+
+            mapped_df = batch_df.rename(columns=renamed_cols).copy()
+
+            # Identify missing required bank columns
+            missing_cols = [c for c in REQUIRED_COLUMNS if c not in mapped_df.columns]
+            if missing_cols:
+                st.info(f"💡 Notice: File '{uploaded_file.name}' did not contain standard banking column headers. Missing fields ({missing_cols}) were auto-filled with baseline defaults to complete churn risk inference.")
+                for m_col in missing_cols:
+                    mapped_df[m_col] = DEFAULT_VALUES[m_col]
+
+            proc_df = mapped_df[REQUIRED_COLUMNS].copy()
+
+            # Ensure numeric data types & handle boolean/string values
             for b_col in ['HasCrCard', 'IsActiveMember']:
-                if proc_df[b_col].dtype == object:
-                    proc_df[b_col] = proc_df[b_col].apply(lambda x: 1 if str(x).strip().lower() in ['1', 'yes', 'true'] else 0)
-            
+                proc_df[b_col] = proc_df[b_col].apply(lambda x: 1 if str(x).strip().lower() in ['1', 'yes', 'true'] else (0 if str(x).strip().lower() in ['0', 'no', 'false'] else 1))
+
+            for num_col in ['CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts', 'EstimatedSalary']:
+                proc_df[num_col] = pd.to_numeric(proc_df[num_col], errors='coerce').fillna(DEFAULT_VALUES[num_col])
+
+            proc_df['Geography'] = proc_df['Geography'].astype(str).apply(lambda g: g if g in ['France', 'Germany', 'Spain'] else 'France')
+
             if model is not None:
                 probs = model.predict_proba(proc_df)[:, 1]
                 threshold = 0.45
