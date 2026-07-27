@@ -361,6 +361,11 @@ with tab_batch:
                 preds = (probs >= threshold).astype(int)
                 
                 res_df = batch_df.copy()
+                # Ensure all required banking columns are present in res_df for downstream analytics
+                for r_col in REQUIRED_COLUMNS:
+                    if r_col not in res_df.columns and r_col in proc_df.columns:
+                        res_df[r_col] = proc_df[r_col]
+
                 res_df['Churn_Probability'] = probs
                 res_df['Churn_Probability_%'] = np.round(probs * 100, 2)
                 res_df['Risk_Status'] = np.where(preds == 1, 'HIGH RISK ⚠️', 'LOW RISK ✅')
@@ -393,8 +398,12 @@ with tab_batch:
 with tab_analytics:
     st.markdown("### 📊 Portfolio Visual Analytics Dashboard")
     
-    if 'batch_results' in st.session_state and st.session_state['batch_results'] is not None:
-        df_ana = st.session_state['batch_results']
+    if 'batch_proc_df' in st.session_state and st.session_state['batch_proc_df'] is not None:
+        df_ana = st.session_state['batch_proc_df'].copy()
+        if 'batch_results' in st.session_state and st.session_state['batch_results'] is not None:
+            for col_to_add in ['Churn_Probability_%', 'Churn_Probability', 'Risk_Status', 'CLV_$']:
+                if col_to_add in st.session_state['batch_results'].columns:
+                    df_ana[col_to_add] = st.session_state['batch_results'][col_to_add]
     else:
         df_ana = pd.DataFrame([
             {'CreditScore': 619, 'Geography': 'France', 'Age': 42, 'Tenure': 2, 'Balance': 0.0, 'NumOfProducts': 1, 'Churn_Probability_%': 62.4, 'Risk_Status': 'HIGH RISK ⚠️'},
@@ -405,17 +414,28 @@ with tab_analytics:
     ca1, ca2 = st.columns(2)
     with ca1:
         st.markdown("##### 📈 Demographics & Account Balance Cluster")
-        fig_scatter = px.scatter(df_ana, x='Age', y='Balance', size='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else None, color='Risk_Status' if 'Risk_Status' in df_ana.columns else 'Geography', template=plotly_template)
-        fig_scatter.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_scatter, use_container_width=True)
+        try:
+            fig_scatter = px.scatter(
+                df_ana, x='Age', y='Balance', 
+                size='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else None, 
+                color='Risk_Status' if 'Risk_Status' in df_ana.columns else 'Geography', 
+                template=plotly_template
+            )
+            fig_scatter.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_scatter, use_container_width=True)
+        except Exception as scatter_err:
+            st.warning(f"Notice: Visual analytics chart pending baseline data ({scatter_err}).")
 
     with ca2:
         st.markdown("##### 🎲 Monte Carlo Portfolio Attrition Simulation")
-        mc_res = run_monte_carlo_simulation(df_ana)
-        st.metric("95% Value-at-Risk (VaR) Deposit Loss", f"${mc_res['VaR_95_USD']:,.2f}")
-        fig_hist = px.histogram(mc_res['Loss_Distribution'], nbins=30, title="Monte Carlo 1,000-Trial Attrition Distribution", template=plotly_template)
-        fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_hist, use_container_width=True)
+        try:
+            mc_res = run_monte_carlo_simulation(df_ana)
+            st.metric("95% Value-at-Risk (VaR) Deposit Loss", f"${mc_res['VaR_95_USD']:,.2f}")
+            fig_hist = px.histogram(mc_res['Loss_Distribution'], nbins=30, title="Monte Carlo 1,000-Trial Attrition Distribution", template=plotly_template)
+            fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_hist, use_container_width=True)
+        except Exception as mc_err:
+            st.warning(f"Notice: Monte Carlo simulation pending baseline metrics ({mc_err}).")
 
 # ==============================================================================
 # TAB 6: FAIR LENDING & EVIDENTLY DRIFT AUDIT
