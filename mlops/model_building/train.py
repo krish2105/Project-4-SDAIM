@@ -19,13 +19,13 @@ import mlflow
 mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("mlops-training-experiment")
 
-api = HfApi()
+api = HfApi(token=os.getenv("HF_TOKEN"))
 
 
-Xtrain_path = "hf://datasets/krish2105/bank-customer-churn/Xtrain.csv"
-Xtest_path = "hf://datasets/krish2105/bank-customer-churn/Xtest.csv"
-ytrain_path = "hf://datasets/krish2105/bank-customer-churn/ytrain.csv"
-ytest_path = "hf://datasets/krish2105/bank-customer-churn/ytest.csv"
+Xtrain_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/Xtrain.csv"
+Xtest_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/Xtest.csv"
+ytrain_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/ytrain.csv"
+ytest_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/ytest.csv"
 
 Xtrain = pd.read_csv(Xtrain_path)
 Xtest = pd.read_csv(Xtest_path)
@@ -134,19 +134,21 @@ with mlflow.start_run():
     print(f"Model saved as artifact at: {model_path}")
 
     # Upload to Hugging Face
-    repo_id = "krish2105/churn-model"
+    repo_id = "krish21may/Bank-Customer-Churn-4"
     repo_type = "model"
+    token = os.getenv("HF_TOKEN")
 
-    # Step 1: Check if the space exists
     try:
         api.repo_info(repo_id=repo_id, repo_type=repo_type)
-        print(f"Space '{repo_id}' already exists. Using it.")
-    except RepositoryNotFoundError:
-        print(f"Space '{repo_id}' not found. Creating new space...")
-        create_repo(repo_id=repo_id, repo_type=repo_type, private=False)
-        print(f"Space '{repo_id}' created.")
+        print(f"Model repo '{repo_id}' already exists. Using it.")
+    except Exception as e:
+        print(f"Model repo '{repo_id}' not found or error: {e}. Creating new model repo...")
+        try:
+            create_repo(repo_id=repo_id, repo_type=repo_type, private=False, token=token)
+            print(f"Model repo '{repo_id}' created.")
+        except Exception as create_err:
+            print(f"Repo creation info: {create_err}")
 
-    # create_repo("churn-model", repo_type="model", private=False)
     api.upload_file(
         path_or_fileobj="best_churn_model.joblib",
         path_in_repo="best_churn_model.joblib",
