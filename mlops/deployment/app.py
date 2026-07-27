@@ -4,7 +4,7 @@ from huggingface_hub import hf_hub_download
 import joblib
 
 # Download the model from the Model Hub
-model_path = hf_hub_download(repo_id="jpaggarwal/churn-model", filename="best_churn_model.joblib")
+model_path = hf_hub_download(repo_id="krish2105/churn-model", filename="best_churn_model.joblib")
 
 # Load the model
 model = joblib.load(model_path)
