@@ -14,11 +14,27 @@ def run_drift_analysis(current_df, reference_csv="mlops/data/bank_customer_churn
     Returns:
         dict containing Overall Drift Index, drifted feature list, and per-feature p-values.
     """
+    # Resolve reference_csv candidate paths
+    if reference_csv is None or not os.path.exists(reference_csv):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(base_dir, "../data/bank_customer_churn.csv"),
+            os.path.join(base_dir, "../../data/bank_customer_churn.csv"),
+            os.path.join(base_dir, "../deployment/mlops/data/bank_customer_churn.csv"),
+            "mlops/data/bank_customer_churn.csv",
+            "data/bank_customer_churn.csv",
+            "bank_customer_churn.csv"
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                reference_csv = candidate
+                break
+
     if not os.path.exists(reference_csv):
         return {
             'Status': 'Baseline Dataset Missing',
             'Drift_Detected': False,
-            'Drift_Share': 0.0,
+            'Drift_Share_%': 0.0,
             'Drifted_Features': []
         }
         

@@ -1,4 +1,7 @@
 {
+  "pythonPath": "/opt/anaconda3/bin/python",
+  "venvPath": "/opt",
+  "venv": "anaconda3",
   "extraPaths": [
     ".",
     "mlops",

@@ -5,7 +5,19 @@ from huggingface_hub import hf_hub_download
 import joblib
 import io
 import sys
-import os
+# Scikit-Learn 1.6+ compatibility patch for pickled XGBClassifier models
+try:
+    from sklearn.base import ClassifierMixin
+    from sklearn.utils._tags import Tags, TargetTags, ClassifierTags
+    ClassifierMixin.__sklearn_tags__ = lambda self: Tags(
+        estimator_type='classifier',
+        target_tags=TargetTags(required=False),
+        transformer_tags=None,
+        regressor_tags=None,
+        classifier_tags=ClassifierTags()
+    )
+except Exception:
+    pass
 
 # Ensure root project directory is in python path for IDE extensions and runtime
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -237,22 +249,25 @@ with tab_survival:
     st.markdown("### ⏳ Survival Analysis & Time-to-Churn Timeline")
     st.markdown("Models 24-month customer retention curves and predicts expected customer lifespan before attrition.")
     
-    current_prob = st.session_state.get('single_prob', 0.65)
-    surv_info = predict_survival_timeline(current_prob)
-    
-    s1, s2, s3 = st.columns(3)
-    s1.metric("Est. Customer Lifespan", f"{surv_info['Expected_Months_Until_Churn']} Months")
-    s2.metric("6-Month Survival Rate", f"{surv_info['Prob_Survival_6M_%']}%")
-    s3.metric("Hazard Risk Category", surv_info['Hazard_Risk_Category'])
-    
-    st.markdown("##### 📈 24-Month Customer Survival Probability Curve")
-    fig_surv = px.line(
-        surv_info['Survival_Curve_DF'], x='Month', y='Survival_Probability_%',
-        title="24-Month Retention Probability Trajectory", markers=True, template=plotly_template
-    )
-    fig_surv.update_traces(line_color=accent_color, line_width=3)
-    fig_surv.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=350)
-    st.plotly_chart(fig_surv, use_container_width=True)
+    try:
+        current_prob = st.session_state.get('single_prob', 0.65)
+        surv_info = predict_survival_timeline(current_prob)
+        
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Est. Customer Lifespan", f"{surv_info['Expected_Months_Until_Churn']} Months")
+        s2.metric("6-Month Survival Rate", f"{surv_info['Prob_Survival_6M_%']}%")
+        s3.metric("Hazard Risk Category", surv_info['Hazard_Risk_Category'])
+        
+        st.markdown("##### 📈 24-Month Customer Survival Probability Curve")
+        fig_surv = px.line(
+            surv_info['Survival_Curve_DF'], x='Month', y='Survival_Probability_%',
+            title="24-Month Retention Probability Trajectory", markers=True, template=plotly_template
+        )
+        fig_surv.update_traces(line_color=accent_color, line_width=3)
+        fig_surv.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=350)
+        st.plotly_chart(fig_surv, use_container_width=True)
+    except Exception as surv_err:
+        st.warning(f"Survival analysis notice: {surv_err}")
 
 # ==============================================================================
 # TAB 3: CAUSAL ML & UPLIFT MATRIX
@@ -261,30 +276,33 @@ with tab_causal:
     st.markdown("### 🎯 Causal ML & Uplift Campaign Matrix")
     st.markdown("Identifies **Persuadables** (customers who stay *only* if offered a retention incentive) to maximize marketing ROI.")
     
-    sample_uplift_df = pd.DataFrame([
-        {'CreditScore': 619, 'Geography': 'France', 'Age': 42, 'Balance': 85000.0, 'NumOfProducts': 1, 'IsActiveMember': 0, 'Churn_Probability': 0.62},
-        {'CreditScore': 608, 'Geography': 'Spain', 'Age': 31, 'Balance': 45000.0, 'NumOfProducts': 2, 'IsActiveMember': 1, 'Churn_Probability': 0.18},
-        {'CreditScore': 502, 'Geography': 'Germany', 'Age': 58, 'Balance': 150000.0, 'NumOfProducts': 3, 'IsActiveMember': 0, 'Churn_Probability': 0.88},
-        {'CreditScore': 699, 'Geography': 'France', 'Age': 39, 'Balance': 0.0, 'NumOfProducts': 1, 'IsActiveMember': 0, 'Churn_Probability': 0.42}
-    ])
-    
-    res_uplift = segment_causal_uplift(sample_uplift_df)
-    
-    u1, u2 = st.columns(2)
-    with u1:
-        st.markdown("##### 🎯 Causal Segment Breakdown")
-        fig_causal = px.pie(res_uplift, names='Causal_Segment', title="Portfolio Uplift Segments", hole=0.4, template=plotly_template)
-        fig_causal.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_causal, use_container_width=True)
+    try:
+        sample_uplift_df = pd.DataFrame([
+            {'CreditScore': 619, 'Geography': 'France', 'Age': 42, 'Balance': 85000.0, 'NumOfProducts': 1, 'IsActiveMember': 0, 'Churn_Probability': 0.62},
+            {'CreditScore': 608, 'Geography': 'Spain', 'Age': 31, 'Balance': 45000.0, 'NumOfProducts': 2, 'IsActiveMember': 1, 'Churn_Probability': 0.18},
+            {'CreditScore': 502, 'Geography': 'Germany', 'Age': 58, 'Balance': 150000.0, 'NumOfProducts': 3, 'IsActiveMember': 0, 'Churn_Probability': 0.88},
+            {'CreditScore': 699, 'Geography': 'France', 'Age': 39, 'Balance': 0.0, 'NumOfProducts': 1, 'IsActiveMember': 0, 'Churn_Probability': 0.42}
+        ])
         
-    with u2:
-        st.markdown("##### 💡 Campaign Targeting Guidelines")
-        st.info("""
-        - 🎯 **Persuadables**: High Uplift — Allocate 80% of retention campaign budget here.
-        - 🔒 **Sure Things**: Low Churn Risk — Do not spend retention budget.
-        - ❌ **Lost Causes**: Extremely high risk / inactive — Low campaign response.
-        - ⚠️ **Sleeping Dogs**: Low risk — Do not disturb with unneeded emails.
-        """)
+        res_uplift = segment_causal_uplift(sample_uplift_df)
+        
+        u1, u2 = st.columns(2)
+        with u1:
+            st.markdown("##### 🎯 Causal Segment Breakdown")
+            fig_causal = px.pie(res_uplift, names='Causal_Segment', title="Portfolio Uplift Segments", hole=0.4, template=plotly_template)
+            fig_causal.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_causal, use_container_width=True)
+            
+        with u2:
+            st.markdown("##### 💡 Campaign Targeting Guidelines")
+            st.info("""
+            - 🎯 **Persuadables**: High Uplift — Allocate 80% of retention campaign budget here.
+            - 🔒 **Sure Things**: Low Churn Risk — Do not spend retention budget.
+            - ❌ **Lost Causes**: Extremely high risk / inactive — Low campaign response.
+            - ⚠️ **Sleeping Dogs**: Low risk — Do not disturb with unneeded emails.
+            """)
+    except Exception as uplift_err:
+        st.warning(f"Causal uplift segmentation notice: {uplift_err}")
 
 # ==============================================================================
 # TAB 4: BATCH CSV PROCESSOR
@@ -443,22 +461,33 @@ with tab_analytics:
 with tab_drift:
     st.markdown("### ⚖️ Fair Lending Audit & Evidently Data Drift")
     
-    if 'batch_proc_df' in st.session_state:
-        drift_df = st.session_state['batch_proc_df']
-    else:
-        drift_df = pd.DataFrame([
-            {'CreditScore': 550, 'Geography': 'Germany', 'Age': 60, 'Tenure': 1, 'Balance': 180000.0, 'NumOfProducts': 3, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 120000.0},
-            {'CreditScore': 510, 'Geography': 'Spain', 'Age': 58, 'Tenure': 2, 'Balance': 195000.0, 'NumOfProducts': 4, 'HasCrCard': 0, 'IsActiveMember': 0, 'EstimatedSalary': 130000.0}
-        ])
+    try:
+        if 'batch_results' in st.session_state and st.session_state['batch_results'] is not None:
+            fairness_df = st.session_state['batch_results'].copy()
+        elif 'batch_proc_df' in st.session_state and st.session_state['batch_proc_df'] is not None:
+            fairness_df = st.session_state['batch_proc_df'].copy()
+            if model is not None:
+                probs = model.predict_proba(fairness_df)[:, 1]
+                fairness_df['Churn_Probability'] = probs
+                fairness_df['Churn_Probability_%'] = np.round(probs * 100, 2)
+                fairness_df['Risk_Status'] = np.where(probs >= 0.45, 'HIGH RISK ⚠️', 'LOW RISK ✅')
+        else:
+            fairness_df = pd.DataFrame([
+                {'CreditScore': 550, 'Geography': 'Germany', 'Age': 60, 'Tenure': 1, 'Balance': 180000.0, 'NumOfProducts': 3, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 120000.0, 'Churn_Probability_%': 75.0, 'Risk_Status': 'HIGH RISK ⚠️'},
+                {'CreditScore': 510, 'Geography': 'Spain', 'Age': 58, 'Tenure': 2, 'Balance': 195000.0, 'NumOfProducts': 4, 'HasCrCard': 0, 'IsActiveMember': 0, 'EstimatedSalary': 130000.0, 'Churn_Probability_%': 82.0, 'Risk_Status': 'HIGH RISK ⚠️'},
+                {'CreditScore': 650, 'Geography': 'France', 'Age': 32, 'Tenure': 5, 'Balance': 45000.0, 'NumOfProducts': 2, 'HasCrCard': 1, 'IsActiveMember': 1, 'EstimatedSalary': 80000.0, 'Churn_Probability_%': 15.0, 'Risk_Status': 'LOW RISK ✅'}
+            ])
+            
+        f_res = run_fairness_audit(fairness_df)
+        d_res = run_drift_analysis(fairness_df)
         
-    f_res = run_fairness_audit(drift_df)
-    d_res = run_drift_analysis(drift_df)
-    
-    st.markdown("##### ⚖️ ECOA Fair Lending Disparate Impact Audit")
-    st.metric("Disparate Impact Ratio (4/5th Rule)", f"{f_res['Disparate_Impact_Ratio']}", f_res['Regulatory_Status'])
-    
-    st.markdown("##### 📉 Evidently AI KS-Test Data Drift Status")
-    st.metric("Overall Drift Status", "DRIFT DETECTED ⚠️" if d_res['Drift_Detected'] else "HEALTHY (NO DRIFT) ✅", f"Drifted Share: {d_res['Drift_Share_%']}%")
+        st.markdown("##### ⚖️ ECOA Fair Lending Disparate Impact Audit")
+        st.metric("Disparate Impact Ratio (4/5th Rule)", f"{f_res['Disparate_Impact_Ratio']}", f_res['Regulatory_Status'])
+        
+        st.markdown("##### 📉 Evidently AI KS-Test Data Drift Status")
+        st.metric("Overall Drift Status", "DRIFT DETECTED ⚠️" if d_res.get('Drift_Detected', False) else "HEALTHY (NO DRIFT) ✅", f"Drifted Share: {d_res.get('Drift_Share_%', 0.0)}%")
+    except Exception as drift_err:
+        st.warning(f"Fair lending & data drift analysis notice: {drift_err}")
 
 # ==============================================================================
 # TAB 7: EXECUTIVE PDF BRIEFING & FASTAPI DOCS

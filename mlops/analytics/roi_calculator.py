@@ -40,25 +40,49 @@ def optimize_decision_threshold(df_predictions, campaign_cost=150.0, success_rat
     """
     Finds the optimal classification threshold that maximizes total bank profit.
     """
+    df = df_predictions.copy()
+    
+    # Resolve Churn Probability Column
+    if 'Churn_Probability' in df.columns:
+        prob_series = df['Churn_Probability']
+    elif 'Churn_Probability_%' in df.columns:
+        prob_series = df['Churn_Probability_%'] / 100.0
+        df['Churn_Probability'] = prob_series
+    else:
+        prob_series = pd.Series(0.5, index=df.index)
+        df['Churn_Probability'] = prob_series
+
+    # Resolve CLV Column
+    if 'CLV' in df.columns:
+        clv_series = df['CLV']
+    elif 'CLV_$' in df.columns:
+        clv_series = df['CLV_$']
+        df['CLV'] = clv_series
+    else:
+        clv_series = pd.Series([
+            calculate_clv(r.get('Balance', 50000), r.get('EstimatedSalary', 75000), r.get('NumOfProducts', 1), r.get('Tenure', 5))
+            for _, r in df.iterrows()
+        ], index=df.index)
+        df['CLV'] = clv_series
+
     thresholds = np.linspace(0.10, 0.90, 81)
     profits = []
     
     for t in thresholds:
-        targeted = df_predictions[df_predictions['Churn_Probability'] >= t]
+        targeted = df[df['Churn_Probability'] >= t]
         if len(targeted) == 0:
             profits.append(0.0)
             continue
             
         # Total CLV of targeted at-risk customers
-        total_clv = targeted['CLV'].sum()
         total_cost = len(targeted) * campaign_cost
         total_saved = (targeted['Churn_Probability'] * success_rate * targeted['CLV']).sum()
         net_profit = total_saved - total_cost
-        profits.append(net_profit)
+        profits.append(float(net_profit))
         
-    best_idx = np.argmax(profits)
+    best_idx = int(np.argmax(profits))
     return {
-        'Optimal_Threshold': round(thresholds[best_idx], 2),
-        'Max_Net_Profit': round(profits[best_idx], 2),
+        'Optimal_Threshold': round(float(thresholds[best_idx]), 2),
+        'Max_Net_Profit': round(float(profits[best_idx]), 2),
         'Threshold_Curve': pd.DataFrame({'Threshold': thresholds, 'Net_Profit': profits})
     }
