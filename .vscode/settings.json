@@ -1,0 +1,12 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/mlops",
+    "${workspaceFolder}/mlops/deployment"
+  ],
+  "python.analysis.ignore": [
+    "**/__pyrefly_virtual__/**",
+    "**/*.ipynb"
+  ],
+  "python.analysis.diagnosticMode": "openFilesOnly"
+}
