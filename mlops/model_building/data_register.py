@@ -5,9 +5,14 @@ import os
 
 repo_id = "krish2105/bank-customer-churn"
 repo_type = "dataset"
+hf_token = os.getenv("HF_TOKEN")
+
+if not hf_token:
+    print("HF_TOKEN is not set. Skipping dataset registration.")
+    raise SystemExit(0)
 
 # Initialize API client
-api = HfApi(token=os.getenv("HF_TOKEN"))
+api = HfApi(token=hf_token)
 
 # Step 1: Check if the space exists
 try:
