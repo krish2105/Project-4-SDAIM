@@ -20,7 +20,7 @@ os.makedirs(deployment_mlops, exist_ok=True)
 with open(os.path.join(deployment_mlops, "__init__.py"), "w") as f:
     f.write("# Package init\n")
 
-for pkg in ["analytics", "monitoring", "data"]:
+for pkg in ["analytics", "monitoring", "reports", "api", "data"]:
     src = os.path.join("mlops", pkg)
     dst = os.path.join(deployment_mlops, pkg)
     if os.path.exists(src):

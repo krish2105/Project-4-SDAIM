@@ -10,3 +10,5 @@ evidently
 fastapi
 uvicorn
 pydantic
+reportlab
+lifelines
