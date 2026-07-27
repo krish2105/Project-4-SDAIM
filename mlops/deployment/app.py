@@ -7,9 +7,13 @@ import io
 import plotly.express as px
 import plotly.graph_objects as go
 
+from mlops.analytics.shap_explainer import calculate_shap_contributions
+from mlops.analytics.roi_calculator import calculate_clv, calculate_expected_retention_roi, optimize_decision_threshold
+from mlops.monitoring.drift_monitor import run_drift_analysis
+
 # Set Page Config
 st.set_page_config(
-    page_title="Bank Customer Churn Intelligence",
+    page_title="Bank Customer Churn Intelligence Platform",
     page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -20,21 +24,22 @@ with st.sidebar:
     st.image("https://img.icons8.com/isometric/100/bank.png", width=70)
     st.title("Control Panel")
     
-    st.markdown("### 🎨 Theme Selector")
+    st.markdown("### 🎨 Visual Theme")
     theme_mode = st.radio(
-        "Choose Theme:",
+        "Select Theme:",
         ["🌙 Dark Mode", "☀️ Light Mode"],
         index=0
     )
     is_dark = "Dark" in theme_mode
 
     st.markdown("---")
-    st.markdown("### ⚙️ System Metadata")
+    st.markdown("### ⚙️ MLOps Architecture")
     st.info("""
-    - **Model Architecture**: Tuned XGBoost
-    - **Decision Threshold**: `0.45`
-    - **Hugging Face Hub**: `krish21may/Bank-Customer-Churn-4`
-    - **Engine**: Plotly Interactive Visuals
+    - **Model**: Tuned XGBoost Classifier
+    - **Explainability**: SHAP Attribution
+    - **Financials**: CLV & ROI Optimizer
+    - **Drift Engine**: Evidently AI Observability
+    - **REST API**: FastAPI Microservice
     """)
 
 # Dynamic CSS Theme Tokens
@@ -116,15 +121,17 @@ def load_churn_model():
 
 model = load_churn_model()
 
-# Main Title Banner
-st.markdown('<div class="main-header">🏦 Bank Customer Churn Intelligence & Visual Analytics</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">AI-Powered Risk Assessment, Financial Modeling & Dynamic Interactive Dashboards</div>', unsafe_allow_html=True)
+# Header Banner
+st.markdown('<div class="main-header">🏦 Bank Customer Churn Intelligence & MLOps Platform</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Enterprise Decision System: SHAP Explainability • Financial CLV Optimizer • Evidently AI Drift Observatory</div>', unsafe_allow_html=True)
 
 # Navigation Tabs
-tab_single, tab_batch, tab_analytics = st.tabs([
-    "👤 Single Customer Prediction", 
-    "📁 Batch CSV Upload & Inference", 
-    "📊 Portfolio Visual Analytics"
+tab_single, tab_batch, tab_analytics, tab_drift, tab_api = st.tabs([
+    "👤 Single Risk & SHAP XAI", 
+    "📁 Batch CSV Processor", 
+    "📊 Visual Portfolio Analytics",
+    "📉 Evidently Drift Monitor",
+    "⚡ FastAPI Microservice"
 ])
 
 REQUIRED_COLUMNS = [
@@ -133,24 +140,23 @@ REQUIRED_COLUMNS = [
 ]
 
 # ==============================================================================
-# TAB 1: SINGLE CUSTOMER PREDICTION & GAUGE CHART
+# TAB 1: SINGLE CUSTOMER PREDICTION & SHAP EXPLAINABILITY & CLV ROI
 # ==============================================================================
 with tab_single:
-    st.markdown("### 👤 Single Customer Risk Profiler")
+    st.markdown("### 👤 Single Customer Analysis & SHAP Explainability")
     
-    # Preset Profiles
     c_preset, _ = st.columns([2, 1])
     with c_preset:
         preset = st.radio(
-            "Load Sample Customer Scenario:",
-            ["Custom Input", "⚠️ High Churn Risk Customer", "✅ Low Churn Risk Customer"],
+            "Load Scenario Profile:",
+            ["Custom Input", "⚠️ High Churn Risk Profile", "✅ Low Churn Risk Profile"],
             horizontal=True
         )
     
-    if preset == "⚠️ High Churn Risk Customer":
+    if preset == "⚠️ High Churn Risk Profile":
         def_credit, def_geo, def_age, def_tenure = 590, "Germany", 52, 2
         def_balance, def_num_prod, def_card, def_active, def_salary = 125000.0, 1, "Yes", "No", 75000.0
-    elif preset == "✅ Low Churn Risk Customer":
+    elif preset == "✅ Low Churn Risk Profile":
         def_credit, def_geo, def_age, def_tenure = 750, "France", 28, 7
         def_balance, def_num_prod, def_card, def_active, def_salary = 45000.0, 2, "Yes", "Yes", 95000.0
     else:
@@ -160,23 +166,23 @@ with tab_single:
     col_input, col_results = st.columns([1.1, 1], gap="large")
 
     with col_input:
-        st.markdown("##### 📋 Demographic & Financial Inputs")
+        st.markdown("##### 📋 Input Demographics & Financial Parameters")
         
         c1, c2 = st.columns(2)
         with c1:
             Age = st.number_input("Age (Years)", min_value=18, max_value=100, value=def_age, step=1, key="s_age")
             Geography = st.selectbox("Geography", ["France", "Germany", "Spain"], index=["France", "Germany", "Spain"].index(def_geo), key="s_geo")
-            Tenure = st.number_input("Tenure (Years with Bank)", min_value=0, max_value=20, value=def_tenure, step=1, key="s_tenure")
-            EstimatedSalary = st.number_input("Estimated Annual Salary ($)", min_value=0.0, max_value=500000.0, value=float(def_salary), step=1000.0, key="s_salary")
+            Tenure = st.number_input("Tenure (Years)", min_value=0, max_value=20, value=def_tenure, step=1, key="s_tenure")
+            EstimatedSalary = st.number_input("Estimated Salary ($)", min_value=0.0, max_value=500000.0, value=float(def_salary), step=1000.0, key="s_salary")
 
         with c2:
             CreditScore = st.number_input("Credit Score", min_value=300, max_value=900, value=def_credit, step=5, key="s_credit")
             Balance = st.number_input("Account Balance ($)", min_value=0.0, max_value=1000000.0, value=float(def_balance), step=5000.0, key="s_balance")
-            NumOfProducts = st.slider("Number of Bank Products", min_value=1, max_value=4, value=def_num_prod, key="s_products")
+            NumOfProducts = st.slider("Number of Products", min_value=1, max_value=4, value=def_num_prod, key="s_products")
             HasCrCard = st.selectbox("Has Credit Card?", ["Yes", "No"], index=0 if def_card == "Yes" else 1, key="s_card")
             IsActiveMember = st.selectbox("Is Active Member?", ["Yes", "No"], index=0 if def_active == "Yes" else 1, key="s_active")
 
-        predict_btn = st.button("🔍 Predict Customer Churn Risk")
+        predict_btn = st.button("🔍 Run Churn Risk & SHAP Analysis")
 
     single_input = pd.DataFrame([{
         'CreditScore': CreditScore,
@@ -191,7 +197,7 @@ with tab_single:
     }])
 
     with col_results:
-        st.markdown("##### 📊 Real-Time Risk Intelligence")
+        st.markdown("##### 📊 Prediction & SHAP Risk Attribution")
         
         if predict_btn or preset != "Custom Input":
             if model is not None:
@@ -199,77 +205,69 @@ with tab_single:
                 threshold = 0.45
                 is_churn = prob >= threshold
                 
-                # Plotly Gauge Chart for Churn Risk
+                # Gauge Chart
                 fig_gauge = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=prob * 100,
                     number={'suffix': '%', 'font': {'size': 36, 'color': accent_color}},
-                    title={'text': "Churn Risk Index", 'font': {'size': 18, 'color': text_primary}},
+                    title={'text': "Churn Probability Index", 'font': {'size': 18, 'color': text_primary}},
                     gauge={
-                        'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': text_secondary},
+                        'axis': {'range': [0, 100]},
                         'bar': {'color': "#EF4444" if is_churn else "#10B981"},
                         'bgcolor': card_bg,
-                        'borderwidth': 1,
-                        'bordercolor': border_color,
                         'steps': [
                             {'range': [0, 30], 'color': 'rgba(16, 185, 129, 0.2)'},
                             {'range': [30, 45], 'color': 'rgba(245, 158, 11, 0.2)'},
                             {'range': [45, 100], 'color': 'rgba(239, 68, 68, 0.2)'}
                         ],
-                        'threshold': {
-                            'line': {'color': "red", 'width': 3},
-                            'thickness': 0.75,
-                            'value': threshold * 100
-                        }
+                        'threshold': {'line': {'color': "red", 'width': 3}, 'value': threshold * 100}
                     }
                 ))
-                fig_gauge.update_layout(
-                    template=plotly_template,
-                    height=250,
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
-                )
+                fig_gauge.update_layout(template=plotly_template, height=220, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_gauge, use_container_width=True)
                 
-                # Metrics Row
-                m1, m2 = st.columns(2)
-                with m1:
-                    st.metric("Predicted Churn Probability", f"{prob * 100:.1f}%", f"{(prob - threshold) * 100:+.1f}% vs threshold", delta_color="inverse")
-                with m2:
-                    st.metric("Risk Status", "HIGH CHURN RISK" if is_churn else "LOW CHURN RISK", "Action Required" if is_churn else "Stable Customer", delta_color="inverse" if is_churn else "normal")
+                # Financial CLV & Retention ROI
+                clv = calculate_clv(Balance, EstimatedSalary, NumOfProducts, Tenure)
+                roi_info = calculate_expected_retention_roi(prob, clv)
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Est. Customer Lifetime Value", f"${clv:,.2f}")
+                m2.metric("Expected Saved Value", f"${roi_info['Expected_Saved_Value']:,.2f}")
+                m3.metric("Retention Net Impact", f"${roi_info['Net_Financial_Impact']:,.2f}", delta=f"{roi_info['Campaign_ROI_%']}% ROI", delta_color="normal" if roi_info['Net_Financial_Impact']>0 else "inverse")
 
-                if is_churn:
-                    st.error(f"### ⚠️ High Risk Customer Flagged ({prob * 100:.1f}%)")
-                    st.markdown("""
-                    **Recommended Personal Retention Actions:**
-                    - 📞 Schedule personal relationship check-in within 48 hours.
-                    - 💰 Waive annual fees & offer promotional interest rate on deposits.
-                    - 💳 Cross-sell relevant financial protection products.
-                    """)
-                else:
-                    st.success(f"### ✅ Customer Status Stable ({prob * 100:.1f}%)")
-                    st.markdown("""
-                    **Recommended Engagement Strategy:**
-                    - 💳 Offer premium rewards credit card upgrade.
-                    - 📈 Invite customer to private wealth advisory seminar.
-                    """)
+                # SHAP Feature Drivers Bar Chart
+                st.markdown("##### 🔍 Local SHAP Feature Risk Attribution")
+                shap_df = calculate_shap_contributions(model, single_input)
+                
+                fig_shap = px.bar(
+                    shap_df,
+                    x='SHAP_Impact',
+                    y='Feature',
+                    orientation='h',
+                    color='Impact_Type',
+                    color_discrete_map={'Increases Churn Risk ⚠️': '#EF4444', 'Decreases Churn Risk ✅': '#10B981'},
+                    title="SHAP Feature Force Drivers",
+                    template=plotly_template
+                )
+                fig_shap.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=280)
+                st.plotly_chart(fig_shap, use_container_width=True)
+
             else:
-                st.warning("Model is not loaded properly.")
+                st.warning("Model not loaded.")
         else:
-            st.info("👈 Enter details on the left and click **'Predict Customer Churn Risk'**.")
+            st.info("👈 Set customer details on the left and click **'Run Churn Risk & SHAP Analysis'**.")
 
 # ==============================================================================
-# TAB 2: BATCH CSV UPLOAD & BULK INFERENCE
+# TAB 2: BATCH CSV PROCESSOR
 # ==============================================================================
 with tab_batch:
     st.markdown("### 📁 Batch Prediction Engine")
-    st.markdown("Upload a CSV file of bank customers to generate bulk predictions and automated risk strategies.")
+    st.markdown("Upload a customer CSV file to perform bulk AI churn risk assessment and CLV financial optimization.")
     
     c_up, c_template = st.columns([2, 1], gap="large")
     
     with c_template:
-        st.markdown("##### 📥 CSV Template Generator")
+        st.markdown("##### 📥 Sample CSV Template")
         sample_df = pd.DataFrame([
             {'CreditScore': 619, 'Geography': 'France', 'Age': 42, 'Tenure': 2, 'Balance': 0.0, 'NumOfProducts': 1, 'HasCrCard': 1, 'IsActiveMember': 1, 'EstimatedSalary': 101348.88},
             {'CreditScore': 608, 'Geography': 'Spain', 'Age': 41, 'Tenure': 1, 'Balance': 83807.86, 'NumOfProducts': 1, 'HasCrCard': 0, 'IsActiveMember': 1, 'EstimatedSalary': 112542.58},
@@ -279,15 +277,10 @@ with tab_batch:
         ])
         buf = io.BytesIO()
         sample_df.to_csv(buf, index=False)
-        st.download_button(
-            "📄 Download Sample CSV Template",
-            buf.getvalue(),
-            "sample_bank_customers.csv",
-            "text/csv"
-        )
+        st.download_button("📄 Download Sample CSV Template", buf.getvalue(), "sample_bank_customers.csv", "text/csv")
         
     with c_up:
-        uploaded_file = st.file_uploader("Upload Customer CSV File", type=["csv"])
+        uploaded_file = st.file_uploader("Upload Customer CSV File", type=["csv"], key="batch_uploader")
 
     if uploaded_file is not None:
         try:
@@ -309,123 +302,137 @@ with tab_batch:
                     preds = (probs >= threshold).astype(int)
                     
                     res_df = batch_df.copy()
+                    res_df['Churn_Probability'] = probs
                     res_df['Churn_Probability_%'] = np.round(probs * 100, 2)
                     res_df['Risk_Status'] = np.where(preds == 1, 'HIGH RISK ⚠️', 'LOW RISK ✅')
-                    res_df['Strategy'] = np.where(preds == 1, 'RM Check-in & Rate Waiver', 'Upsell Wealth/Credit')
                     
-                    # Store in session state for analytics tab
+                    # Compute CLV for each row
+                    clvs = [
+                        calculate_clv(r['Balance'], r['EstimatedSalary'], r['NumOfProducts'], r['Tenure']) 
+                        for _, r in proc_df.iterrows()
+                    ]
+                    res_df['CLV_$'] = np.round(clvs, 2)
+                    
                     st.session_state['batch_results'] = res_df
+                    st.session_state['batch_proc_df'] = proc_df
                     
-                    # Batch Metrics
                     st.markdown("---")
-                    st.markdown("##### 📊 Batch Summary KPI Indicators")
+                    st.markdown("##### 📊 Batch Summary & Optimal Threshold Curve")
+                    
+                    # Threshold Optimization
+                    opt_res = optimize_decision_threshold(res_df)
+                    
                     k1, k2, k3, k4 = st.columns(4)
                     k1.metric("Total Records", len(res_df))
                     k2.metric("High Risk Count", int(np.sum(preds == 1)), f"{np.mean(preds)*100:.1f}% risk rate", delta_color="inverse")
-                    k3.metric("Low Risk Count", int(np.sum(preds == 0)))
-                    k4.metric("Avg Churn Prob", f"{np.mean(probs)*100:.1f}%")
+                    k3.metric("Optimal Risk Threshold", f"{opt_res['Optimal_Threshold']}")
+                    k4.metric("Max Projected Net Profit", f"${opt_res['Max_Net_Profit']:,.2f}")
 
-                    # Donut Chart for Batch Overview
-                    st.markdown("---")
-                    c_chart1, c_chart2 = st.columns(2)
-                    with c_chart1:
-                        st.markdown("##### 🎯 Risk Classification Breakdown")
-                        fig_donut = px.pie(
-                            res_df, 
-                            names='Risk_Status', 
-                            title="Portfolio Risk Distribution",
-                            hole=0.4,
-                            color='Risk_Status',
-                            color_discrete_map={'HIGH RISK ⚠️': '#EF4444', 'LOW RISK ✅': '#10B981'},
-                            template=plotly_template
-                        )
-                        fig_donut.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                        st.plotly_chart(fig_donut, use_container_width=True)
-                    
-                    with c_chart2:
-                        st.markdown("##### 🌍 Churn Risk by Geography")
-                        fig_geo = px.histogram(
-                            res_df,
-                            x='Geography',
-                            color='Risk_Status',
-                            barmode='group',
-                            title="Geographic Risk Comparison",
-                            color_discrete_map={'HIGH RISK ⚠️': '#EF4444', 'LOW RISK ✅': '#10B981'},
-                            template=plotly_template
-                        )
-                        fig_geo.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-                        st.plotly_chart(fig_geo, use_container_width=True)
-
-                    # Table Display
-                    st.markdown("##### 📋 Full Batch Predictions Table")
                     st.dataframe(res_df, use_container_width=True)
                     
-                    # Download Predictions
                     out_buf = io.BytesIO()
                     res_df.to_csv(out_buf, index=False)
-                    st.download_button(
-                        "📥 Download Batch Predictions CSV",
-                        out_buf.getvalue(),
-                        f"churn_predictions_{uploaded_file.name}",
-                        "text/csv"
-                    )
+                    st.download_button("📥 Download Batch Predictions CSV", out_buf.getvalue(), f"churn_predictions_{uploaded_file.name}", "text/csv")
         except Exception as err:
             st.error(f"Error parsing CSV: {err}")
 
 # ==============================================================================
-# TAB 3: PORTFOLIO VISUAL ANALYTICS (PLOTLY DASHBOARD)
+# TAB 3: PORTFOLIO VISUAL ANALYTICS
 # ==============================================================================
 with tab_analytics:
     st.markdown("### 📊 Portfolio Visual Analytics Dashboard")
-    st.markdown("Interactive visual discovery platform analyzing feature correlations, age clusters, and balance distributions.")
     
     if 'batch_results' in st.session_state and st.session_state['batch_results'] is not None:
         df_ana = st.session_state['batch_results']
     else:
-        # Load sample dataset if no batch uploaded yet
-        st.info("💡 Displaying baseline analytics dataset. Upload a batch CSV in Tab 2 to visualize your custom portfolio.")
+        st.info("💡 Displaying default analytics dataset. Upload a batch CSV in Tab 2 to visualize your custom portfolio.")
         df_ana = pd.DataFrame([
             {'CreditScore': 619, 'Geography': 'France', 'Age': 42, 'Tenure': 2, 'Balance': 0.0, 'NumOfProducts': 1, 'HasCrCard': 1, 'IsActiveMember': 1, 'EstimatedSalary': 101348.88, 'Churn_Probability_%': 62.4, 'Risk_Status': 'HIGH RISK ⚠️'},
             {'CreditScore': 608, 'Geography': 'Spain', 'Age': 41, 'Tenure': 1, 'Balance': 83807.86, 'NumOfProducts': 1, 'HasCrCard': 0, 'IsActiveMember': 1, 'EstimatedSalary': 112542.58, 'Churn_Probability_%': 18.2, 'Risk_Status': 'LOW RISK ✅'},
             {'CreditScore': 502, 'Geography': 'France', 'Age': 42, 'Tenure': 8, 'Balance': 159660.8, 'NumOfProducts': 3, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 113931.57, 'Churn_Probability_%': 74.8, 'Risk_Status': 'HIGH RISK ⚠️'},
-            {'CreditScore': 699, 'Geography': 'Germany', 'Age': 55, 'Tenure': 1, 'Balance': 120000.0, 'NumOfProducts': 2, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 93826.63, 'Churn_Probability_%': 81.5, 'Risk_Status': 'HIGH RISK ⚠️'},
-            {'CreditScore': 850, 'Geography': 'Spain', 'Age': 29, 'Tenure': 7, 'Balance': 45000.0, 'NumOfProducts': 2, 'HasCrCard': 1, 'IsActiveMember': 1, 'EstimatedSalary': 79084.1, 'Churn_Probability_%': 12.1, 'Risk_Status': 'LOW RISK ✅'},
-            {'CreditScore': 720, 'Geography': 'Germany', 'Age': 48, 'Tenure': 4, 'Balance': 110000.0, 'NumOfProducts': 1, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 88000.0, 'Churn_Probability_%': 68.3, 'Risk_Status': 'HIGH RISK ⚠️'},
-            {'CreditScore': 630, 'Geography': 'France', 'Age': 33, 'Tenure': 6, 'Balance': 30000.0, 'NumOfProducts': 2, 'HasCrCard': 1, 'IsActiveMember': 1, 'EstimatedSalary': 55000.0, 'Churn_Probability_%': 15.4, 'Risk_Status': 'LOW RISK ✅'}
+            {'CreditScore': 699, 'Geography': 'Germany', 'Age': 55, 'Tenure': 1, 'Balance': 120000.0, 'NumOfProducts': 2, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 93826.63, 'Churn_Probability_%': 81.5, 'Risk_Status': 'HIGH RISK ⚠️'}
         ])
 
     ca1, ca2 = st.columns(2)
-    
     with ca1:
-        st.markdown("##### 📈 Age vs. Account Balance vs. Risk Score")
+        st.markdown("##### 📈 Demographics & Account Balance Cluster")
         fig_scatter = px.scatter(
-            df_ana,
-            x='Age',
-            y='Balance',
-            size='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else None,
+            df_ana, x='Age', y='Balance', size='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else None,
             color='Risk_Status' if 'Risk_Status' in df_ana.columns else 'Geography',
-            hover_data=['CreditScore', 'Geography', 'NumOfProducts'],
-            title="Customer Demographics & Account Balance Cluster",
-            color_discrete_map={'HIGH RISK ⚠️': '#EF4444', 'LOW RISK ✅': '#10B981'},
             template=plotly_template
         )
         fig_scatter.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_scatter, use_container_width=True)
 
     with ca2:
-        st.markdown("##### 🛍️ Churn Distribution by Product Count")
-        fig_prod = px.box(
-            df_ana,
-            x='NumOfProducts',
-            y='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else 'Balance',
+        st.markdown("##### 🛍️ Product Holdings vs. Churn Distribution")
+        fig_box = px.box(
+            df_ana, x='NumOfProducts', y='Churn_Probability_%' if 'Churn_Probability_%' in df_ana.columns else 'Balance',
             color='Risk_Status' if 'Risk_Status' in df_ana.columns else None,
-            title="Churn Probability Spread across Product Holdings",
-            color_discrete_map={'HIGH RISK ⚠️': '#EF4444', 'LOW RISK ✅': '#10B981'},
             template=plotly_template
         )
-        fig_prod.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_prod, use_container_width=True)
+        fig_box.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_box, use_container_width=True)
+
+# ==============================================================================
+# TAB 4: EVIDENTLY AI DATA DRIFT OBSERVATORY
+# ==============================================================================
+with tab_drift:
+    st.markdown("### 📉 Evidently AI Data Drift Observatory")
+    st.markdown("Monitors statistical Data Drift between reference baseline training data (`mlops/data/bank_customer_churn.csv`) and live production traffic.")
+    
+    if 'batch_proc_df' in st.session_state:
+        drift_df = st.session_state['batch_proc_df']
+    else:
+        # Sample shifted dataset to demonstrate drift detection
+        drift_df = pd.DataFrame([
+            {'CreditScore': 550, 'Geography': 'Germany', 'Age': 60, 'Tenure': 1, 'Balance': 180000.0, 'NumOfProducts': 3, 'HasCrCard': 1, 'IsActiveMember': 0, 'EstimatedSalary': 120000.0},
+            {'CreditScore': 510, 'Geography': 'Spain', 'Age': 58, 'Tenure': 2, 'Balance': 195000.0, 'NumOfProducts': 4, 'HasCrCard': 0, 'IsActiveMember': 0, 'EstimatedSalary': 130000.0}
+        ])
+        
+    drift_results = run_drift_analysis(drift_df)
+    
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Monitoring Status", drift_results['Status'])
+    d2.metric("Overall Drift Status", "DRIFT DETECTED ⚠️" if drift_results['Drift_Detected'] else "HEALTHY (NO DRIFT) ✅")
+    d3.metric("Drifted Features Share", f"{drift_results['Drift_Share_%']}%")
+
+    if drift_results['Drifted_Features']:
+        st.warning(f"⚠️ Features experiencing statistical distribution drift (p < 0.05): `{drift_results['Drifted_Features']}`")
+    else:
+        st.success("✅ Feature distributions match the baseline dataset. Model remains accurate and compliant.")
+
+    if 'Feature_Metrics' in drift_results:
+        st.markdown("##### 🔬 Kolmogorov-Smirnov Statistical P-Values")
+        p_vals_df = pd.DataFrame([
+            {'Feature': feat, 'KS_Statistic': metrics['statistic'], 'P_Value': metrics['p_value'], 'Drift_Status': 'DRIFTED ⚠️' if metrics['drifted'] else 'NORMAL ✅'}
+            for feat, metrics in drift_results['Feature_Metrics'].items()
+        ])
+        st.dataframe(p_vals_df, use_container_width=True)
+
+# ==============================================================================
+# TAB 5: FASTAPI MICROSERVICE DOCS
+# ==============================================================================
+with tab_api:
+    st.markdown("### ⚡ Enterprise FastAPI Microservice")
+    st.markdown("High-throughput REST API service for integration into core banking IT infrastructure.")
+    
+    st.code("""
+# Start FastAPI Microservice via Terminal:
+uvicorn mlops.api.main:app --host 0.0.0.0 --port 8000 --reload
+    """, language="bash")
+    
+    st.markdown("##### 🔌 Available Endpoints:")
+    st.markdown("""
+    - `GET /`: Health check & API version
+    - `GET /v1/health`: Kubernetes readiness & liveness probe
+    - `POST /v1/predict`: Single customer inference with SHAP drivers & CLV ROI
+    - `POST /v1/predict-batch`: High-throughput JSON array batch inference
+    - `POST /v1/drift-check`: Evidently AI data drift evaluation payload
+    """)
+    
+    st.info("Interactive OpenAPI / Swagger Documentation available at `http://localhost:8000/docs` when service is running.")
 
 # Footer
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #9CA3AF;'>Bank Customer Churn Intelligence & Analytics Engine | Streamlit • XGBoost • Plotly • Hugging Face</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #9CA3AF;'>Enterprise Bank Customer Churn Intelligence & MLOps Platform | XGBoost • SHAP • Evidently AI • FastAPI • Streamlit</div>", unsafe_allow_html=True)
