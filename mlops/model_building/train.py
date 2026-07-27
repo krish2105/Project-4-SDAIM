@@ -19,18 +19,34 @@ import mlflow
 mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("mlops-training-experiment")
 
-api = HfApi(token=os.getenv("HF_TOKEN"))
+token = os.getenv("HF_TOKEN")
+if token:
+    try:
+        login(token=token)
+    except Exception as e:
+        print(f"Login info: {e}")
 
+api = HfApi(token=token)
 
-Xtrain_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/Xtrain.csv"
-Xtest_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/Xtest.csv"
-ytrain_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/ytrain.csv"
-ytest_path = "hf://datasets/krish21may/Bank-Customer-Churn-4/ytest.csv"
+def load_split(filename):
+    if os.path.exists(filename):
+        print(f"Loading '{filename}' from local path.")
+        return pd.read_csv(filename)
+    else:
+        from huggingface_hub import hf_hub_download
+        print(f"Downloading '{filename}' from Hugging Face Hub...")
+        path = hf_hub_download(
+            repo_id="krish21may/Bank-Customer-Churn-4",
+            filename=filename,
+            repo_type="dataset",
+            token=token
+        )
+        return pd.read_csv(path)
 
-Xtrain = pd.read_csv(Xtrain_path)
-Xtest = pd.read_csv(Xtest_path)
-ytrain = pd.read_csv(ytrain_path)
-ytest = pd.read_csv(ytest_path)
+Xtrain = load_split("Xtrain.csv")
+Xtest = load_split("Xtest.csv")
+ytrain = load_split("ytrain.csv")
+ytest = load_split("ytest.csv")
 
 
 # List of numerical features in the dataset
