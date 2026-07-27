@@ -1,5 +1,6 @@
 from huggingface_hub import HfApi, create_repo, login
 import os
+import shutil
 import time
 
 token = os.getenv("HF_TOKEN")
@@ -13,7 +14,22 @@ api = HfApi(token=token)
 repo_id = "krish21may/Bank-Customer-Churn-4"
 repo_type = "space"
 
-# Step 1: Ensure Space exists on Hugging Face
+# Step 1: Sync required modules into deployment directory for Hugging Face Space
+deployment_mlops = "mlops/deployment/mlops"
+os.makedirs(deployment_mlops, exist_ok=True)
+with open(os.path.join(deployment_mlops, "__init__.py"), "w") as f:
+    f.write("# Package init\n")
+
+for pkg in ["analytics", "monitoring", "data"]:
+    src = os.path.join("mlops", pkg)
+    dst = os.path.join(deployment_mlops, pkg)
+    if os.path.exists(src):
+        if os.path.exists(dst):
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        print(f"Copied '{src}' -> '{dst}' for Space packaging.")
+
+# Step 2: Ensure Space exists on Hugging Face
 try:
     api.repo_info(repo_id=repo_id, repo_type=repo_type)
     print(f"Space '{repo_id}' already exists.")
@@ -31,7 +47,7 @@ except Exception as e:
     except Exception as create_err:
         print(f"Space creation info: {create_err}")
 
-# Step 2: Upload folder with automatic retry & backoff for rate limits
+# Step 3: Upload folder with automatic retry & backoff for rate limits
 max_retries = 3
 for attempt in range(1, max_retries + 1):
     try:
@@ -42,7 +58,7 @@ for attempt in range(1, max_retries + 1):
             repo_type=repo_type,
             path_in_repo="",
         )
-        print("Successfully uploaded files to Hugging Face Space!")
+        print("Successfully uploaded complete application package to Hugging Face Space!")
         break
     except Exception as upload_err:
         print(f"Upload attempt {attempt} failed: {upload_err}")

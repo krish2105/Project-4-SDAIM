@@ -7,9 +7,24 @@ import io
 import plotly.express as px
 import plotly.graph_objects as go
 
-from mlops.analytics.shap_explainer import calculate_shap_contributions
-from mlops.analytics.roi_calculator import calculate_clv, calculate_expected_retention_roi, optimize_decision_threshold
-from mlops.monitoring.drift_monitor import run_drift_analysis
+import sys
+import os
+
+# Ensure current directory and parent directory are in Python module search path
+sys.path.insert(0, os.path.abspath("."))
+sys.path.insert(0, os.path.abspath(".."))
+
+try:
+    from mlops.analytics.shap_explainer import calculate_shap_contributions
+    from mlops.analytics.roi_calculator import calculate_clv, calculate_expected_retention_roi, optimize_decision_threshold
+    from mlops.monitoring.drift_monitor import run_drift_analysis
+except ModuleNotFoundError:
+    try:
+        from analytics.shap_explainer import calculate_shap_contributions
+        from analytics.roi_calculator import calculate_clv, calculate_expected_retention_roi, optimize_decision_threshold
+        from monitoring.drift_monitor import run_drift_analysis
+    except Exception as import_err:
+        st.error(f"Module import notice: {import_err}")
 
 # Set Page Config
 st.set_page_config(
