@@ -14,9 +14,11 @@ api = HfApi(token=token)
 repo_id = "krish21may/Bank-Customer-Churn-4"
 repo_type = "space"
 
-# Step 1: Sync required modules into deployment directory for Hugging Face Space
-deployment_mlops = "mlops/deployment/mlops"
+# Step 1: Sync required modules & files into deployment directory for Hugging Face Space
+deployment_dir = "mlops/deployment"
+deployment_mlops = os.path.join(deployment_dir, "mlops")
 os.makedirs(deployment_mlops, exist_ok=True)
+
 with open(os.path.join(deployment_mlops, "__init__.py"), "w") as f:
     f.write("# Package init\n")
 
@@ -28,6 +30,12 @@ for pkg in ["analytics", "monitoring", "reports", "api", "data"]:
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
         print(f"Copied '{src}' -> '{dst}' for Space packaging.")
+
+# Copy Xtest.csv, best_churn_model.joblib, and requirements.txt directly into deployment root
+for fname in ["Xtest.csv", "best_churn_model.joblib", "Xtrain.csv", "ytrain.csv", "ytest.csv"]:
+    if os.path.exists(fname):
+        shutil.copy(fname, os.path.join(deployment_dir, fname))
+        print(f"Copied '{fname}' -> '{deployment_dir}/{fname}'")
 
 # Step 2: Ensure Space exists on Hugging Face
 try:
@@ -58,13 +66,9 @@ for attempt in range(1, max_retries + 1):
             repo_type=repo_type,
             path_in_repo="",
         )
-        print("Successfully uploaded complete application package to Hugging Face Space!")
+        print("Successfully deployed app to Hugging Face Space!")
         break
-    except Exception as upload_err:
-        print(f"Upload attempt {attempt} failed: {upload_err}")
+    except Exception as err:
+        print(f"Upload error (attempt {attempt}/{max_retries}): {err}")
         if attempt < max_retries:
-            sleep_time = attempt * 5
-            print(f"Retrying in {sleep_time} seconds...")
-            time.sleep(sleep_time)
-        else:
-            raise upload_err
+            time.sleep(5)
