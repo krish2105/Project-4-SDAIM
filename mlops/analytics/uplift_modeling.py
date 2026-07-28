@@ -3,13 +3,7 @@ import numpy as np
 
 def segment_causal_uplift(df_predictions):
     """
-    Categorizes customers into Causal ML Uplift Segments for Campaign Profit Optimization.
-    
-    Segments:
-    - Persuadables: Moderate/High Risk + High Balance/Salary -> High Campaign Uplift (Target Here!)
-    - Sure Things: Low Churn Risk -> Do Not Spend Budget
-    - Lost Causes: Very High Risk (>85%) + Inactive -> Low Uplift
-    - Sleeping Dogs: Low Risk + Inactive -> Risk of disturbance if contacted
+    Categorizes shoppers into Causal ML Uplift Segments for E-Commerce Campaign Profit Optimization.
     """
     df = df_predictions.copy()
     
@@ -18,21 +12,21 @@ def segment_causal_uplift(df_predictions):
     
     for _, row in df.iterrows():
         p = float(row.get('Churn_Probability', row.get('Churn_Probability_%', 0) / 100.0 if 'Churn_Probability_%' in row else 0.5))
-        is_active = row.get('IsActiveMember', 1)
-        balance = float(row.get('Balance', 50000))
+        complain = int(row.get('Complain', 0))
+        cashback = float(row.get('CashBackAmount', 150))
         
         # Causal Classification Heuristics
-        if 0.35 <= p <= 0.80 and balance > 10000:
-            segment = "🎯 Persuadable (High Campaign ROI)"
+        if 0.35 <= p <= 0.80 and cashback > 50:
+            segment = "🎯 Persuadable (Target for $50 Coupon)"
             uplift = round(p * 0.55, 2)
         elif p < 0.35:
-            segment = "🔒 Sure Thing (Low Churn Risk)"
+            segment = "🔒 Sure Thing (Organic Repeat Shopper)"
             uplift = round(p * 0.05, 2)
-        elif p > 0.80 and is_active == 0:
-            segment = "❌ Lost Cause (Ineffective Target)"
+        elif p > 0.80 and complain == 1:
+            segment = "❌ Lost Cause (Severe Complaint Unresolved)"
             uplift = round(p * 0.10, 2)
         else:
-            segment = "⚠️ Sleeping Dog (Do Not Disturb)"
+            segment = "⚠️ Sleeping Dog (Low Active Engagement)"
             uplift = round(-0.15, 2)
             
         causal_segments.append(segment)

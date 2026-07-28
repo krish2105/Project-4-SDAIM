@@ -1,173 +1,89 @@
-# for data manipulation
 import pandas as pd
+import numpy as np
+
+# Scikit-Learn 1.6+ compatibility patch for pickled XGBClassifier models
+try:
+    from sklearn.base import ClassifierMixin
+    from sklearn.utils._tags import Tags, TargetTags, ClassifierTags
+    ClassifierMixin.__sklearn_tags__ = lambda self: Tags(
+        estimator_type='classifier',
+        target_tags=TargetTags(required=False),
+        transformer_tags=None,
+        regressor_tags=None,
+        classifier_tags=ClassifierTags()
+    )
+except Exception:
+    pass
+
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import make_column_transformer
-from sklearn.pipeline import make_pipeline
-# for model training, tuning, and evaluation
+from sklearn.pipeline import Pipeline
 import xgboost as xgb
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, classification_report, recall_score
-# for model serialization
+from sklearn.metrics import accuracy_score, recall_score, roc_auc_score
 import joblib
-# for creating a folder
 import os
-# for hugging face space authentication to upload files
-from huggingface_hub import login, HfApi, create_repo
-from huggingface_hub.utils import RepositoryNotFoundError, HfHubHTTPError
 import mlflow
 
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_experiment("mlops-training-experiment")
+try:
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("mlops-training-experiment")
+except Exception as mlflow_err:
+    print(f"MLflow info: {mlflow_err}")
 
-token = os.getenv("HF_TOKEN")
-if token:
-    try:
-        login(token=token)
-    except Exception as e:
-        print(f"Login info: {e}")
+Xtrain = pd.read_csv("Xtrain.csv")
+Xtest = pd.read_csv("Xtest.csv")
+ytrain = pd.read_csv("ytrain.csv").values.ravel()
+ytest = pd.read_csv("ytest.csv").values.ravel()
 
-api = HfApi(token=token)
-
-def load_split(filename):
-    if os.path.exists(filename):
-        print(f"Loading '{filename}' from local path.")
-        return pd.read_csv(filename)
-    else:
-        from huggingface_hub import hf_hub_download
-        print(f"Downloading '{filename}' from Hugging Face Hub...")
-        path = hf_hub_download(
-            repo_id="krish21may/Bank-Customer-Churn-4",
-            filename=filename,
-            repo_type="dataset",
-            token=token
-        )
-        return pd.read_csv(path)
-
-Xtrain = load_split("Xtrain.csv")
-Xtest = load_split("Xtest.csv")
-ytrain = load_split("ytrain.csv")
-ytest = load_split("ytest.csv")
-
-
-# List of numerical features in the dataset
 numeric_features = [
-    'CreditScore',       # Customer's credit score
-    'Age',               # Customer's age
-    'Tenure',            # Number of years the customer has been with the bank
-    'Balance',           # Customer’s account balance
-    'NumOfProducts',     # Number of products the customer has with the bank
-    'HasCrCard',         # Whether the customer has a credit card (binary: 0 or 1)
-    'IsActiveMember',    # Whether the customer is an active member (binary: 0 or 1)
-    'EstimatedSalary'    # Customer’s estimated salary
+    'Tenure', 'WarehouseToHome', 'HourSpendOnApp', 'NumberOfDeviceRegistered',
+    'SatisfactionScore', 'Complain', 'OrderAmountHikeFromlastYear',
+    'DaySinceLastOrder', 'CashBackAmount', 'CityTier'
 ]
 
-# List of categorical features in the dataset
 categorical_features = [
-    'Geography',         # Country where the customer resides
+    'PreferredPaymentMode', 'Gender', 'PreferedOrderCat', 'MaritalStatus'
 ]
 
+class_weight = float((len(ytrain) - sum(ytrain)) / max(1, sum(ytrain)))
 
-# Set the clas weight to handle class imbalance
-class_weight = ytrain.value_counts()[0] / ytrain.value_counts()[1]
-class_weight
-
-# Define the preprocessing steps
 preprocessor = make_column_transformer(
     (StandardScaler(), numeric_features),
-    (OneHotEncoder(handle_unknown='ignore'), categorical_features)
+    (OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
 )
 
-# Define base XGBoost model
-xgb_model = xgb.XGBClassifier(scale_pos_weight=class_weight, random_state=42)
+xgb_clf = xgb.XGBClassifier(
+    scale_pos_weight=class_weight,
+    eval_metric='logloss',
+    random_state=42
+)
 
-# Define hyperparameter grid
+pipeline = Pipeline([
+    ('preprocessor', preprocessor),
+    ('classifier', xgb_clf)
+])
+
 param_grid = {
-    'xgbclassifier__n_estimators': [50, 75, 100, 125, 150],    # number of tree to build
-    'xgbclassifier__max_depth': [2, 3, 4],    # maximum depth of each tree
-    'xgbclassifier__colsample_bytree': [0.4, 0.5, 0.6],    # percentage of attributes to be considered (randomly) for each tree
-    'xgbclassifier__colsample_bylevel': [0.4, 0.5, 0.6],    # percentage of attributes to be considered (randomly) for each level of a tree
-    'xgbclassifier__learning_rate': [0.01, 0.05, 0.1],    # learning rate
-    'xgbclassifier__reg_lambda': [0.4, 0.5, 0.6],    # L2 regularization factor
+    'classifier__n_estimators': [50, 100],
+    'classifier__max_depth': [3, 5],
+    'classifier__learning_rate': [0.05, 0.1],
 }
 
-# Model pipeline
-model_pipeline = make_pipeline(preprocessor, xgb_model)
+print("Starting hyperparameter tuning...")
+grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='roc_auc', n_jobs=1)
+grid_search.fit(Xtrain, ytrain)
 
-# Start MLflow run
-with mlflow.start_run():
-    # Hyperparameter tuning
-    grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, n_jobs=-1)
-    grid_search.fit(Xtrain, ytrain)
+best_model = grid_search.best_estimator_
+ypred = best_model.predict(Xtest)
+ypred_prob = best_model.predict_proba(Xtest)[:, 1]
 
-    # Log all parameter combinations and their mean test scores
-    results = grid_search.cv_results_
-    for i in range(len(results['params'])):
-        param_set = results['params'][i]
-        mean_score = results['mean_test_score'][i]
-        std_score = results['std_test_score'][i]
+acc = accuracy_score(ytest, ypred)
+rec = recall_score(ytest, ypred)
+auc = roc_auc_score(ytest, ypred_prob)
 
-        # Log each combination as a separate MLflow run
-        with mlflow.start_run(nested=True):
-            mlflow.log_params(param_set)
-            mlflow.log_metric("mean_test_score", mean_score)
-            mlflow.log_metric("std_test_score", std_score)
+print(f"Best Hyperparameters: {grid_search.best_params_}")
+print(f"Test Accuracy: {acc:.4f}, Test Recall: {rec:.4f}, Test ROC-AUC: {auc:.4f}")
 
-    # Log best parameters separately in main run
-    mlflow.log_params(grid_search.best_params_)
-
-    # Store and evaluate the best model
-    best_model = grid_search.best_estimator_
-
-    classification_threshold = 0.45
-
-    y_pred_train_proba = best_model.predict_proba(Xtrain)[:, 1]
-    y_pred_train = (y_pred_train_proba >= classification_threshold).astype(int)
-
-    y_pred_test_proba = best_model.predict_proba(Xtest)[:, 1]
-    y_pred_test = (y_pred_test_proba >= classification_threshold).astype(int)
-
-    train_report = classification_report(ytrain, y_pred_train, output_dict=True)
-    test_report = classification_report(ytest, y_pred_test, output_dict=True)
-
-    # Log the metrics for the best model
-    mlflow.log_metrics({
-        "train_accuracy": train_report['accuracy'],
-        "train_precision": train_report['1']['precision'],
-        "train_recall": train_report['1']['recall'],
-        "train_f1-score": train_report['1']['f1-score'],
-        "test_accuracy": test_report['accuracy'],
-        "test_precision": test_report['1']['precision'],
-        "test_recall": test_report['1']['recall'],
-        "test_f1-score": test_report['1']['f1-score']
-    })
-
-    # Save the model locally
-    model_path = "best_churn_model.joblib"
-    joblib.dump(best_model, model_path)
-
-    # Log the model artifact
-    mlflow.log_artifact(model_path, artifact_path="model")
-    print(f"Model saved as artifact at: {model_path}")
-
-    # Upload to Hugging Face
-    repo_id = "krish21may/Bank-Customer-Churn-4"
-    repo_type = "model"
-    token = os.getenv("HF_TOKEN")
-
-    try:
-        api.repo_info(repo_id=repo_id, repo_type=repo_type)
-        print(f"Model repo '{repo_id}' already exists. Using it.")
-    except Exception as e:
-        print(f"Model repo '{repo_id}' not found or error: {e}. Creating new model repo...")
-        try:
-            create_repo(repo_id=repo_id, repo_type=repo_type, private=False, token=token)
-            print(f"Model repo '{repo_id}' created.")
-        except Exception as create_err:
-            print(f"Repo creation info: {create_err}")
-
-    api.upload_file(
-        path_or_fileobj="best_churn_model.joblib",
-        path_in_repo="best_churn_model.joblib",
-        repo_id=repo_id,
-        repo_type=repo_type,
-    )
+joblib.dump(best_model, "best_churn_model.joblib")
+print("Model successfully saved to best_churn_model.joblib")

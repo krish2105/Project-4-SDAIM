@@ -1,6 +1,5 @@
-# for data manipulation
 import pandas as pd
-import sklearn
+import numpy as np
 import os
 from sklearn.model_selection import train_test_split
 from huggingface_hub import login, HfApi, hf_hub_download
@@ -14,45 +13,37 @@ if token:
 
 api = HfApi(token=token)
 
-# Prefer local dataset file if present to avoid rate limits (429)
-local_csv = "mlops/data/bank_customer_churn.csv"
+local_csv = "mlops/data/ecommerce_customer_churn.csv"
+fallback_csv = "mlops/data/bank_customer_churn.csv"
+
 if os.path.exists(local_csv):
     print(f"Loading dataset from local file: '{local_csv}'")
-    bank_dataset = pd.read_csv(local_csv)
+    df = pd.read_csv(local_csv)
+elif os.path.exists(fallback_csv):
+    print(f"Loading dataset from fallback file: '{fallback_csv}'")
+    df = pd.read_csv(fallback_csv)
 else:
-    print("Local dataset not found. Downloading via authenticated Hugging Face API...")
-    try:
-        csv_file = hf_hub_download(
-            repo_id="krish21may/Bank-Customer-Churn-4",
-            filename="bank_customer_churn.csv",
-            repo_type="dataset",
-            token=token
-        )
-        bank_dataset = pd.read_csv(csv_file)
-    except Exception as e:
-        print(f"Authenticated download failed: {e}. Attempting fallback...")
-        bank_dataset = pd.read_csv("hf://datasets/jpaggarwal/bank-customer-churn/bank_customer_churn.csv")
+    raise FileNotFoundError("Dataset CSV file not found.")
 
-print("Dataset loaded successfully. Shape:", bank_dataset.shape)
+print("Dataset loaded successfully. Shape:", df.shape)
 
-# Define target variable for classification task
-target = 'Exited'
+target = 'Churn'
 
-# List of numerical features
 numeric_features = [
-    'CreditScore', 'Age', 'Tenure', 'Balance', 
-    'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary'
+    'Tenure', 'WarehouseToHome', 'HourSpendOnApp', 'NumberOfDeviceRegistered',
+    'SatisfactionScore', 'Complain', 'OrderAmountHikeFromlastYear',
+    'DaySinceLastOrder', 'CashBackAmount', 'CityTier'
 ]
 
-# List of categorical features
-categorical_features = ['Geography']
+categorical_features = ['PreferredPaymentMode', 'Gender', 'PreferedOrderCat', 'MaritalStatus']
 
-X = bank_dataset[numeric_features + categorical_features]
-y = bank_dataset[target]
+# Standardize columns
+X = df[numeric_features + categorical_features].copy()
+y = df[target].copy()
 
 # Split dataset into train and test sets
 Xtrain, Xtest, ytrain, ytest = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X, y, test_size=0.2, random_state=42, stratify=y
 )
 
 Xtrain.to_csv("Xtrain.csv", index=False)
@@ -60,17 +51,4 @@ Xtest.to_csv("Xtest.csv", index=False)
 ytrain.to_csv("ytrain.csv", index=False)
 ytest.to_csv("ytest.csv", index=False)
 
-files = ["Xtrain.csv", "Xtest.csv", "ytrain.csv", "ytest.csv"]
-
-repo_id = "krish21may/Bank-Customer-Churn-4"
-for file_path in files:
-    try:
-        api.upload_file(
-            path_or_fileobj=file_path,
-            path_in_repo=file_path.split("/")[-1],
-            repo_id=repo_id,
-            repo_type="dataset",
-        )
-        print(f"Uploaded '{file_path}' to dataset repo '{repo_id}'.")
-    except Exception as upload_err:
-        print(f"Failed to upload '{file_path}': {upload_err}")
+print("Data preparation complete. Preprocessed files saved successfully.")

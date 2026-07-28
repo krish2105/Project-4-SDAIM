@@ -1,29 +1,25 @@
 import pandas as pd
 import numpy as np
 
-def calculate_clv(balance, salary, num_products, tenure):
+def calculate_clv(cashback, order_hike, tenure, satisfaction_score):
     """
-    Estimates annual Customer Lifetime Value (CLV) for a bank customer.
+    Estimates annual Customer Lifetime Value (CLV) for an E-Commerce shopper.
     """
-    annual_margin_balance = float(balance) * 0.035  # Net interest margin ~3.5%
-    annual_margin_salary = float(salary) * 0.025   # Fee income from transactions
-    product_multiplier = float(num_products) * 150.0
-    tenure_loyalty_factor = min(1.5, 1.0 + (float(tenure) * 0.05))
+    base_annual_spend = 800.0 + (float(cashback) * 3.5)
+    growth_multiplier = 1.0 + (float(order_hike) / 100.0)
+    tenure_loyalty_factor = min(1.6, 1.0 + (float(tenure) * 0.04))
+    satisfaction_factor = 0.8 + (float(satisfaction_score) * 0.1)
     
-    clv = (annual_margin_balance + annual_margin_salary + product_multiplier) * tenure_loyalty_factor
-    return max(300.0, float(clv))
+    clv = base_annual_spend * growth_multiplier * tenure_loyalty_factor * satisfaction_factor
+    return max(250.0, float(clv))
 
-def calculate_expected_retention_roi(churn_prob, clv, campaign_cost=150.0, retention_success_rate=0.40):
+def calculate_expected_retention_roi(churn_prob, clv, campaign_cost=50.0, retention_success_rate=0.45):
     """
-    Calculates expected net profit from intervening with a retention campaign offer.
+    Calculates expected net profit from intervening with a coupon/discount retention campaign offer.
     """
-    # Expected Loss without intervention
     expected_loss = churn_prob * clv
-    
-    # Expected Value saved with campaign intervention
     saved_value = churn_prob * retention_success_rate * clv
     net_campaign_profit = saved_value - campaign_cost
-    
     roi_percent = (net_campaign_profit / campaign_cost) * 100 if campaign_cost > 0 else 0.0
     
     return {
@@ -36,13 +32,12 @@ def calculate_expected_retention_roi(churn_prob, clv, campaign_cost=150.0, reten
         'Recommend_Campaign': net_campaign_profit > 0 and churn_prob >= 0.35
     }
 
-def optimize_decision_threshold(df_predictions, campaign_cost=150.0, success_rate=0.40):
+def optimize_decision_threshold(df_predictions, campaign_cost=50.0, success_rate=0.45):
     """
-    Finds the optimal classification threshold that maximizes total bank profit.
+    Finds the optimal classification threshold that maximizes total e-commerce profit.
     """
     df = df_predictions.copy()
     
-    # Resolve Churn Probability Column
     if 'Churn_Probability' in df.columns:
         prob_series = df['Churn_Probability']
     elif 'Churn_Probability_%' in df.columns:
@@ -52,37 +47,50 @@ def optimize_decision_threshold(df_predictions, campaign_cost=150.0, success_rat
         prob_series = pd.Series(0.5, index=df.index)
         df['Churn_Probability'] = prob_series
 
-    # Resolve CLV Column
     if 'CLV' in df.columns:
         clv_series = df['CLV']
     elif 'CLV_$' in df.columns:
         clv_series = df['CLV_$']
         df['CLV'] = clv_series
     else:
-        clv_series = pd.Series([
-            calculate_clv(r.get('Balance', 50000), r.get('EstimatedSalary', 75000), r.get('NumOfProducts', 1), r.get('Tenure', 5))
-            for _, r in df.iterrows()
-        ], index=df.index)
+        clv_series = df.apply(
+            lambda r: calculate_clv(
+                r.get('CashBackAmount', 150),
+                r.get('OrderAmountHikeFromlastYear', 15),
+                r.get('Tenure', 12),
+                r.get('SatisfactionScore', 3)
+            ), axis=1
+        )
         df['CLV'] = clv_series
 
     thresholds = np.linspace(0.10, 0.90, 81)
-    profits = []
+    results = []
     
-    for t in thresholds:
-        targeted = df[df['Churn_Probability'] >= t]
-        if len(targeted) == 0:
-            profits.append(0.0)
-            continue
-            
-        # Total CLV of targeted at-risk customers
-        total_cost = len(targeted) * campaign_cost
-        total_saved = (targeted['Churn_Probability'] * success_rate * targeted['CLV']).sum()
-        net_profit = total_saved - total_cost
-        profits.append(float(net_profit))
+    for th in thresholds:
+        target_indices = df['Churn_Probability'] >= th
+        n_targeted = np.sum(target_indices)
         
-    best_idx = int(np.argmax(profits))
+        targeted_probs = df.loc[target_indices, 'Churn_Probability']
+        targeted_clvs = df.loc[target_indices, 'CLV']
+        
+        total_cost = n_targeted * campaign_cost
+        gross_saved = np.sum(targeted_probs * success_rate * targeted_clvs)
+        net_profit = gross_saved - total_cost
+        
+        results.append({
+            'Threshold': round(th, 2),
+            'Targeted_Customers': int(n_targeted),
+            'Campaign_Cost_$': round(total_cost, 2),
+            'Gross_Saved_CLV_$': round(gross_saved, 2),
+            'Net_Profit_$': round(net_profit, 2)
+        })
+        
+    res_df = pd.DataFrame(results)
+    best_row = res_df.loc[res_df['Net_Profit_$'].idxmax()]
+    
     return {
-        'Optimal_Threshold': round(float(thresholds[best_idx]), 2),
-        'Max_Net_Profit': round(float(profits[best_idx]), 2),
-        'Threshold_Curve': pd.DataFrame({'Threshold': thresholds, 'Net_Profit': profits})
+        'Optimal_Threshold': float(best_row['Threshold']),
+        'Max_Net_Profit_$': float(best_row['Net_Profit_$']),
+        'Targeted_Count': int(best_row['Targeted_Customers']),
+        'Threshold_Curve_DF': res_df
     }

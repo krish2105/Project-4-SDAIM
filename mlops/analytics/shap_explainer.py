@@ -1,76 +1,71 @@
 import pandas as pd
 import numpy as np
-import shap
 
 def calculate_shap_contributions(model, input_df):
     """
-    Computes SHAP feature importance & contributions for a given prediction pipeline.
-    
-    Args:
-        model: Sklearn Pipeline containing preprocessor & XGBClassifier
-        input_df: DataFrame with raw input features
-        
-    Returns:
-        DataFrame of feature contributions sorted by impact on churn probability.
+    Computes feature contributions and risk drivers for E-Commerce Churn.
     """
     try:
-        # Extract preprocessor and model from pipeline
         if hasattr(model, 'named_steps'):
-            preprocessor = model.named_steps.get('columntransformer') or model.steps[0][1]
-            classifier = model.named_steps.get('xgbclassifier') or model.steps[-1][1]
+            preprocessor = model.named_steps.get('preprocessor') or model.named_steps.get('columntransformer') or model.steps[0][1]
+            classifier = model.named_steps.get('classifier') or model.named_steps.get('xgbclassifier') or model.steps[-1][1]
             
-            # Transform inputs
             X_trans = preprocessor.transform(input_df)
             
-            # Feature names
-            num_cols = [
-                'CreditScore', 'Age', 'Tenure', 'Balance', 
-                'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary'
-            ]
-            cat_cols = ['Geography_Germany', 'Geography_Spain'] # Depends on OneHotEncoder
-            feature_names = num_cols + ['Geography']
-            
-            # Compute SHAP values
+            import shap
             explainer = shap.TreeExplainer(classifier)
             shap_values = explainer.shap_values(X_trans)
             
             if isinstance(shap_values, list):
                 sv = shap_values[1][0] if len(shap_values) > 1 else shap_values[0][0]
             else:
-                sv = shap_values[0]
-                
-            # Aggregate SHAP contributions back to high-level features
-            shap_dict = {
-                'Age': sv[1],
-                'IsActiveMember': sv[6],
-                'NumOfProducts': sv[4],
-                'Balance': sv[3],
-                'Geography': np.sum(sv[8:]) if len(sv) > 8 else (sv[8] if len(sv) > 8 else 0.0),
-                'CreditScore': sv[0],
-                'Tenure': sv[2],
-                'EstimatedSalary': sv[7],
-                'HasCrCard': sv[5]
-            }
+                sv = shap_values[0] if len(shap_values.shape) > 1 else shap_values
+
+            numeric_features = [
+                'Tenure', 'WarehouseToHome', 'HourSpendOnApp', 'NumberOfDeviceRegistered',
+                'SatisfactionScore', 'Complain', 'OrderAmountHikeFromlastYear',
+                'DaySinceLastOrder', 'CashBackAmount', 'CityTier'
+            ]
             
+            shap_dict = {}
+            for i, feat in enumerate(numeric_features):
+                if i < len(sv):
+                    shap_dict[feat] = float(sv[i])
+                else:
+                    shap_dict[feat] = 0.0
+
+            shap_dict['PreferredPaymentMode'] = float(np.sum(sv[10:14])) if len(sv) >= 14 else 0.0
+            shap_dict['PreferedOrderCat'] = float(np.sum(sv[14:])) if len(sv) > 14 else 0.0
+
             contributions_df = pd.DataFrame([
-                {'Feature': feature, 'SHAP_Impact': val, 'Impact_Type': 'Increases Churn Risk ⚠️' if val > 0 else 'Decreases Churn Risk ✅'}
-                for feature, val in shap_dict.items()
+                {
+                    'Feature': feat,
+                    'SHAP_Impact': val,
+                    'Impact_Type': 'Increases Churn Risk ⚠️' if val > 0 else 'Decreases Churn Risk ✅'
+                }
+                for feat, val in shap_dict.items()
             ]).sort_values(by='SHAP_Impact', key=abs, ascending=False)
             
             return contributions_df
     except Exception as e:
-        # Robust heuristic fallback if tree explainer internal structure varies
-        print(f"SHAP explainer fallback notice: {e}")
-        
-        # Domain-knowledge risk factor weights for bank churn
-        row = input_df.iloc[0]
-        factors = [
-            {'Feature': 'Age', 'SHAP_Impact': (row['Age'] - 38) * 0.02, 'Impact_Type': 'Increases Churn Risk ⚠️' if row['Age'] > 40 else 'Decreases Churn Risk ✅'},
-            {'Feature': 'IsActiveMember', 'SHAP_Impact': -0.25 if row['IsActiveMember'] == 1 else 0.30, 'Impact_Type': 'Decreases Churn Risk ✅' if row['IsActiveMember'] == 1 else 'Increases Churn Risk ⚠️'},
-            {'Feature': 'NumOfProducts', 'SHAP_Impact': 0.35 if row['NumOfProducts'] in [3, 4] else -0.10, 'Impact_Type': 'Increases Churn Risk ⚠️' if row['NumOfProducts'] in [3, 4] else 'Decreases Churn Risk ✅'},
-            {'Feature': 'Geography (Germany)', 'SHAP_Impact': 0.20 if str(row['Geography']).lower() == 'germany' else -0.05, 'Impact_Type': 'Increases Churn Risk ⚠️' if str(row['Geography']).lower() == 'germany' else 'Decreases Churn Risk ✅'},
-            {'Feature': 'Account Balance', 'SHAP_Impact': 0.15 if row['Balance'] > 100000 else -0.05, 'Impact_Type': 'Increases Churn Risk ⚠️' if row['Balance'] > 100000 else 'Decreases Churn Risk ✅'},
-            {'Feature': 'CreditScore', 'SHAP_Impact': -0.15 if row['CreditScore'] > 700 else 0.10, 'Impact_Type': 'Decreases Churn Risk ✅' if row['CreditScore'] > 700 else 'Increases Churn Risk ⚠️'},
-            {'Feature': 'Tenure', 'SHAP_Impact': -0.05 if row['Tenure'] > 5 else 0.05, 'Impact_Type': 'Decreases Churn Risk ✅' if row['Tenure'] > 5 else 'Increases Churn Risk ⚠️'},
-        ]
-        return pd.DataFrame(factors).sort_values(by='SHAP_Impact', key=abs, ascending=False)
+        print(f"SHAP calculation fallback: {e}")
+
+    # Heuristic fallback if TreeExplainer is unavailable
+    tenure = float(input_df.get('Tenure', pd.Series([12])).iloc[0])
+    complain = float(input_df.get('Complain', pd.Series([0])).iloc[0])
+    sat = float(input_df.get('SatisfactionScore', pd.Series([3])).iloc[0])
+    days_last = float(input_df.get('DaySinceLastOrder', pd.Series([10])).iloc[0])
+    
+    fallback_dict = {
+        'Complain': 0.45 if complain == 1 else -0.10,
+        'SatisfactionScore': -0.30 if sat >= 4 else (0.25 if sat <= 2 else 0.05),
+        'DaySinceLastOrder': 0.20 if days_last > 20 else -0.08,
+        'Tenure': -0.25 if tenure > 24 else 0.12,
+        'WarehouseToHome': 0.15,
+        'CashBackAmount': -0.18
+    }
+    
+    return pd.DataFrame([
+        {'Feature': k, 'SHAP_Impact': v, 'Impact_Type': 'Increases Churn Risk ⚠️' if v > 0 else 'Decreases Churn Risk ✅'}
+        for k, v in fallback_dict.items()
+    ]).sort_values(by='SHAP_Impact', key=abs, ascending=False)

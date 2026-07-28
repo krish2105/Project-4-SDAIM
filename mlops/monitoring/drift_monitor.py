@@ -3,27 +3,17 @@ import numpy as np
 import os
 from scipy.stats import ks_2samp
 
-def run_drift_analysis(current_df, reference_csv="mlops/data/bank_customer_churn.csv"):
+def run_drift_analysis(current_df, reference_csv="mlops/data/ecommerce_customer_churn.csv"):
     """
-    Analyzes statistical Data Drift between reference baseline and production traffic.
-    
-    Args:
-        current_df: DataFrame of recent inference inputs / batch payload
-        reference_csv: Path to baseline dataset
-        
-    Returns:
-        dict containing Overall Drift Index, drifted feature list, and per-feature p-values.
+    Analyzes statistical Data Drift between reference baseline and production traffic for E-Commerce features.
     """
-    # Resolve reference_csv candidate paths
     if reference_csv is None or not os.path.exists(reference_csv):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         candidates = [
+            os.path.join(base_dir, "../data/ecommerce_customer_churn.csv"),
             os.path.join(base_dir, "../data/bank_customer_churn.csv"),
-            os.path.join(base_dir, "../../data/bank_customer_churn.csv"),
-            os.path.join(base_dir, "../deployment/mlops/data/bank_customer_churn.csv"),
-            "mlops/data/bank_customer_churn.csv",
-            "data/bank_customer_churn.csv",
-            "bank_customer_churn.csv"
+            "mlops/data/ecommerce_customer_churn.csv",
+            "mlops/data/bank_customer_churn.csv"
         ]
         for candidate in candidates:
             if os.path.exists(candidate):
@@ -40,7 +30,11 @@ def run_drift_analysis(current_df, reference_csv="mlops/data/bank_customer_churn
         
     ref_df = pd.read_csv(reference_csv)
     
-    numeric_features = ['CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts', 'EstimatedSalary']
+    numeric_features = [
+        'Tenure', 'WarehouseToHome', 'HourSpendOnApp', 'NumberOfDeviceRegistered',
+        'SatisfactionScore', 'Complain', 'OrderAmountHikeFromlastYear',
+        'DaySinceLastOrder', 'CashBackAmount', 'CityTier'
+    ]
     
     drifted_features = []
     feature_metrics = {}
@@ -51,7 +45,6 @@ def run_drift_analysis(current_df, reference_csv="mlops/data/bank_customer_churn
             curr_data = current_df[feat].dropna()
             
             if len(curr_data) > 1:
-                # Kolmogorov-Smirnov 2-sample statistical test
                 stat, p_val = ks_2samp(ref_data, curr_data)
                 is_drifted = p_val < 0.05
                 
@@ -59,18 +52,17 @@ def run_drift_analysis(current_df, reference_csv="mlops/data/bank_customer_churn
                     drifted_features.append(feat)
                     
                 feature_metrics[feat] = {
-                    'p_value': round(float(p_val), 4),
-                    'statistic': round(float(stat), 4),
-                    'drifted': is_drifted
+                    'KS_Statistic': round(float(stat), 4),
+                    'P_Value': round(float(p_val), 4),
+                    'Drift_Detected': is_drifted
                 }
-                
-    drift_share = len(drifted_features) / len(numeric_features) if numeric_features else 0.0
-    overall_drift = drift_share >= 0.33  # Significant if > 33% features drifted
+
+    drift_share = (len(drifted_features) / len(numeric_features)) * 100.0 if numeric_features else 0.0
     
     return {
         'Status': 'Analysis Complete',
-        'Drift_Detected': overall_drift,
-        'Drift_Share_%': round(drift_share * 100, 1),
+        'Drift_Detected': len(drifted_features) > 0,
+        'Drift_Share_%': round(drift_share, 1),
         'Drifted_Features': drifted_features,
         'Feature_Metrics': feature_metrics
     }
